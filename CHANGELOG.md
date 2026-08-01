@@ -9,6 +9,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Fixed
 
 - 🔌 **`Connection reset by peer` on client tool calls** — uvicorn's default keep-alive timeout (5s) can be shorter than a client's HTTP connection-pool reuse window, so a pooled-but-idle connection gets written to right after the server has already closed it, surfacing as `ConnectionResetError` even though the underlying command completed successfully. `timeout_keep_alive` is now configurable (`OPEN_TERMINAL_UVICORN_TIMEOUT_KEEP_ALIVE` or `uvicorn_timeout_keep_alive` in config.toml) and defaults to 75s.
+- 🔒 **Process log retention never reached files whose in-memory record was gone** — `_cleanup_expired()`'s log-file deletion only ran when a log file *also* had a matching in-memory `BackgroundProcess` record, but that registry is in-memory and resets on every restart, while the JSONL log files themselves live on disk (often a persistent volume) and survive restarts. Any log file older than the last restart was therefore permanently unreachable by that path regardless of age. Confirmed this can retain plaintext secrets indefinitely if a command echoes one to stdout. `_cleanup_expired()` now also sweeps the log directory by file mtime directly (rate-limited to once per 5 minutes), independent of any in-memory record.
 
 ## [0.11.34] - 2026-04-08
 
