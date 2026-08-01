@@ -26,6 +26,7 @@ from pydantic import BaseModel, Field
 
 from open_terminal.env import API_KEY, BINARY_FILE_MIME_PREFIXES, CORS_ALLOWED_ORIGINS, ENABLE_NOTEBOOKS, ENABLE_SYSTEM_PROMPT, ENABLE_TERMINAL, EXECUTE_DESCRIPTION, EXECUTE_TIMEOUT, FILE_BROWSER_ROOT, LOG_DIR, MAX_TERMINAL_SESSIONS, MULTI_USER, OPEN_TERMINAL_INFO, PROCESS_LOG_RETENTION, SESSION_CWD_TTL, SYSTEM_PROMPT, TERMINAL_TERM
 from open_terminal.utils.runner import PipeRunner, ProcessRunner, create_runner
+from open_terminal.utils.github_token import refresh_github_token_env
 from open_terminal.utils.fs import UserFS
 
 if MULTI_USER:
@@ -1185,6 +1186,7 @@ async def execute(
     session_cwd = _get_session_cwd(session_id, fs) if session_id else None
     cwd = fs.resolve_path(request.cwd, cwd=session_cwd) if request.cwd else (session_cwd or fs.home)
 
+    refresh_github_token_env()
     subprocess_env = {**os.environ, **request.env} if request.env else None
     runner = await create_runner(
         request.command, cwd, subprocess_env, run_as_user=fs.username
@@ -1581,6 +1583,7 @@ if ENABLE_TERMINAL:
                     shell_cmd = [os.environ.get("SHELL", "/bin/sh")]
                     cwd = session_cwd or os.getcwd()
 
+                refresh_github_token_env()
                 spawn_env = os.environ.copy()
                 spawn_env.setdefault("TERM", TERMINAL_TERM)
                 process = subprocess.Popen(
@@ -1612,6 +1615,7 @@ if ENABLE_TERMINAL:
 
         else:  # winpty
             shell = os.environ.get("COMSPEC", "cmd.exe")
+            refresh_github_token_env()
             spawn_env = os.environ.copy()
             spawn_env.setdefault("TERM", TERMINAL_TERM)
             pty_proc = _WinPtyProcess.spawn(
