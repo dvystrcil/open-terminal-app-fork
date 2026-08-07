@@ -1,0 +1,12 @@
+# Vendored: inherit gitleaks v8.30.1 default rule set.
+[extend]
+useDefault = true
+
+[allowlist]
+# homelab#720: these files deliberately contain secret-SHAPED fixture
+# strings to unit-test the redaction function itself -- not real leaked
+# credentials.
+paths = [
+  '''tests/test_redact\.py''',
+  '''tests/test_log_redaction\.py''',
+]

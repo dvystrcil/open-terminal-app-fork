@@ -1,0 +1,25 @@
+name: Tests
+
+# This repo listed pytest as a dev dependency but had no test files and
+# no CI workflow running them at all (homelab#720). Runs the hermetic
+# unit test suite -- pure-logic tests only, no cluster, no live process
+# spawning.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  pytest:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+      - name: Install
+        run: python3 -m pip install -e . pytest
+      - name: Run tests
+        run: python3 -m pytest tests/ -v

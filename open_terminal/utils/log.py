@@ -13,6 +13,11 @@ import aiofiles
 import aiofiles.os
 
 from open_terminal.env import MAX_PROCESS_LOG_SIZE, LOG_FLUSH_INTERVAL, LOG_FLUSH_BUFFER
+from open_terminal.utils.redact import redact_secrets
+
+# Fields that may carry raw process output or the invoking command line --
+# the only places a secret plausibly appears in a log record.
+_REDACT_FIELDS = ("data", "command")
 
 _last_disk_sweep = 0.0
 _DISK_SWEEP_INTERVAL = 300  # rate-limit: at most once per 5 minutes
@@ -69,6 +74,40 @@ def sweep_expired_log_files_rate_limited(processes_dir: str, retention: float) -
     return sweep_expired_log_files(processes_dir, retention, now=now)
 
 
+def _redact_line(line: str) -> str:
+    """Best-effort secret redaction for a single JSONL log line (homelab#720).
+
+    *line* is a complete JSON record (as produced by ``runner.py`` or
+    ``log_process`` below), typically ending in ``\\n``. Redacts known
+    secret patterns from the fields that can carry raw process output or
+    the invoking command line, then re-serializes.
+
+    Falls back to returning *line* unchanged if it isn't valid JSON --
+    this is a best-effort safety net, not something that should ever
+    block a write.
+    """
+    stripped = line.rstrip("\n")
+    try:
+        record = json.loads(stripped)
+    except (json.JSONDecodeError, ValueError):
+        return line
+    if not isinstance(record, dict):
+        return line
+
+    changed = False
+    for field in _REDACT_FIELDS:
+        value = record.get(field)
+        if isinstance(value, str):
+            redacted = redact_secrets(value)
+            if redacted != value:
+                record[field] = redacted
+                changed = True
+
+    if not changed:
+        return line
+    return json.dumps(record) + "\n"
+
+
 class BoundedLogWriter:
     """Async wrapper that rotates the log file when it exceeds a size limit.
 
@@ -101,6 +140,7 @@ class BoundedLogWriter:
         self._last_flush = time.monotonic()
 
     async def write(self, data: str) -> None:
+        data = _redact_line(data)
         encoded_len = len(data.encode("utf-8", errors="replace"))
         if self._bytes_written + encoded_len > MAX_PROCESS_LOG_SIZE:
             await self._rotate()
