@@ -115,7 +115,16 @@ if [ "${OPEN_TERMINAL_ALLOWED_DOMAINS+set}" = "set" ]; then
 
         # Capture the current upstream nameserver before we override resolv.conf
         UPSTREAM_DNS=$(grep -m1 '^nameserver' /etc/resolv.conf | awk '{print $2}')
-        UPSTREAM_DNS="${UPSTREAM_DNS:-8.8.8.8}"
+        # Cloudflare, not Google. This homelab resolves through 1.1.1.1
+        # everywhere else (CoreDNS forward, Pi-hole upstreams, node
+        # static_nameservers), and a stray Google default here would be
+        # the one place that silently disagreed.
+        #
+        # Unreachable in Kubernetes — /etc/resolv.conf always carries a
+        # nameserver, so the line above wins. Changed anyway: a fallback
+        # nobody can trigger today is still the value that applies the day
+        # someone runs this outside a cluster.
+        UPSTREAM_DNS="${UPSTREAM_DNS:-1.1.1.1}"
 
         # Create ipset for dynamically resolved IPs
         sudo ipset create allowed hash:ip -exist
