@@ -137,6 +137,7 @@ cors_allowed_origins = "*"
 log_dir = "/var/log/open-terminal"
 binary_mime_prefixes = "image,audio"
 execute_timeout = 5  # seconds to wait for command output (unset by default)
+process_max_lifetime = 900  # kill /execute processes still running after this many seconds (0 = no limit, the default)
 file_browser_root = "home"
 ```
 

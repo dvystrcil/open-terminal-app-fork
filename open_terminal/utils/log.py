@@ -289,24 +289,37 @@ async def log_process(background_process) -> None:
         log_rotated = writer.rotated if writer else False
         exit_code = await background_process.runner.wait()
         background_process.exit_code = exit_code
-        background_process.status = "done"
+        # Set by enforce_max_lifetime() before it signals the process.
+        kill_reason = getattr(background_process, "kill_reason", None)
+        background_process.status = "killed" if kill_reason else "done"
         background_process.finished_at = time.time()
         background_process.runner.close()
         if writer:
             # Flush any buffered output before writing the end marker.
             await writer.flush()
         if log_file:
-            await log_file.write(
-                json.dumps(
-                    {
-                        "type": "end",
-                        "exit_code": background_process.exit_code,
-                        "log_rotated": log_rotated,
-                        "ts": time.time(),
-                    }
+            if kill_reason:
+                # An output record, so the caller sees why in the normal
+                # output stream and not only in the status field.
+                await log_file.write(
+                    json.dumps(
+                        {
+                            "type": "output",
+                            "data": f"\n[open-terminal] process {kill_reason}\n",
+                            "ts": time.time(),
+                        }
+                    )
+                    + "\n"
                 )
-                + "\n"
-            )
+            end_record = {
+                "type": "end",
+                "exit_code": background_process.exit_code,
+                "log_rotated": log_rotated,
+                "ts": time.time(),
+            }
+            if kill_reason:
+                end_record["kill_reason"] = kill_reason
+            await log_file.write(json.dumps(end_record) + "\n")
             await log_file.close()
 
 
