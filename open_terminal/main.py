@@ -24,7 +24,7 @@ from fastapi.responses import JSONResponse, Response
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel, Field
 
-from open_terminal.env import API_KEY, BINARY_FILE_MIME_PREFIXES, CORS_ALLOWED_ORIGINS, ENABLE_NOTEBOOKS, ENABLE_SYSTEM_PROMPT, ENABLE_TERMINAL, EXECUTE_DESCRIPTION, EXECUTE_TIMEOUT, FILE_BROWSER_ROOT, LOG_DIR, MAX_TERMINAL_SESSIONS, MULTI_USER, OPEN_TERMINAL_INFO, PROCESS_EXPIRY, PROCESS_LOG_RETENTION, PROCESS_UNDELIVERED_EXPIRY, SESSION_CWD_TTL, SYSTEM_PROMPT, TERMINAL_TERM
+from open_terminal.env import API_KEY, BINARY_FILE_MIME_PREFIXES, CORS_ALLOWED_ORIGINS, ENABLE_NOTEBOOKS, ENABLE_SYSTEM_PROMPT, ENABLE_TERMINAL, EXECUTE_DESCRIPTION, EXECUTE_TIMEOUT, FILE_BROWSER_ROOT, LOG_DIR, MAX_TERMINAL_SESSIONS, MULTI_USER, OPEN_TERMINAL_INFO, PROCESS_EXPIRY, PROCESS_KILL_GRACE, PROCESS_LOG_RETENTION, PROCESS_MAX_LIFETIME, PROCESS_UNDELIVERED_EXPIRY, SESSION_CWD_TTL, SYSTEM_PROMPT, TERMINAL_TERM
 from open_terminal.utils.runner import PipeRunner, ProcessRunner, create_runner
 from open_terminal.utils.github_token import refresh_github_token_env
 from open_terminal.utils.fs import UserFS
@@ -374,6 +374,9 @@ class BackgroundProcess:
     finished_at: Optional[float] = field(default=None, repr=False)
     delivered_at: Optional[float] = field(default=None, repr=False)
     log_path: Optional[str] = field(default=None, repr=False)
+    # Set when the max-lifetime reaper kills the process (see utils/lifetime.py).
+    kill_reason: Optional[str] = field(default=None, repr=False)
+    reaper_task: Optional[asyncio.Task] = field(default=None, repr=False)
 
 
 _processes: dict[str, BackgroundProcess] = {}
@@ -414,6 +417,7 @@ def _set_session_cwd(session_id: str | None, path: str):
 
 
 from open_terminal.utils.log import log_process, read_log, sweep_expired_log_files_rate_limited
+from open_terminal.utils.lifetime import enforce_max_lifetime
 
 
 
@@ -1509,6 +1513,12 @@ async def execute(
         id=process_id, command=request.command, runner=runner, log_path=log_path
     )
     background_process.log_task = asyncio.create_task(log_process(background_process))
+    if PROCESS_MAX_LIFETIME > 0:
+        background_process.reaper_task = asyncio.create_task(
+            enforce_max_lifetime(
+                background_process, PROCESS_MAX_LIFETIME, PROCESS_KILL_GRACE
+            )
+        )
     _processes[process_id] = background_process
 
     if wait is None and EXECUTE_TIMEOUT:

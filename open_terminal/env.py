@@ -131,6 +131,27 @@ PROCESS_UNDELIVERED_EXPIRY: float = float(
     )
 )
 
+# Maximum wall-clock lifetime (in seconds) of a background process started
+# via POST /execute. Past it the process group gets SIGTERM, then SIGKILL
+# after PROCESS_KILL_GRACE, and its status becomes "killed" with the reason
+# written into its output. `wait` on /execute only bounds how long the HTTP
+# call blocks, not how long the process runs, so without this a stray
+# `sleep 999999` lives forever. 0 (default) = no limit.
+PROCESS_MAX_LIFETIME: float = float(
+    os.environ.get(
+        "OPEN_TERMINAL_PROCESS_MAX_LIFETIME",
+        config.get("process_max_lifetime", 0),
+    )
+)
+
+# Seconds between the SIGTERM and the SIGKILL sent by the max-lifetime reaper.
+PROCESS_KILL_GRACE: float = float(
+    os.environ.get(
+        "OPEN_TERMINAL_PROCESS_KILL_GRACE",
+        config.get("process_kill_grace", 10),
+    )
+)
+
 # Minimum interval (in seconds) between log flushes during command execution.
 # 0 (default) = flush after every chunk (current behaviour).
 # Setting this to e.g. 1.0 reduces I/O pressure on high-output commands.
